@@ -9,8 +9,10 @@ A tool built on Cloudflare's free tier that adds an approval step before someone
 - [x] CRON Integration
 - [x] NTFY Integration
 - [x] Use itty router
-- [ ] D1 Schema
+- [x] D1 Schema
+- [x] Comments
 - [ ] Put actual resume in bucket
+- [ ] Implement
 
 ## Note
 

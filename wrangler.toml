@@ -1,19 +1,19 @@
-name = "resume-requester"
+name = "document-requester"
 main = "src/index.ts"
 compatibility_date = "2023-01-22"
 
 [[r2_buckets]]
-binding = 'RESUME_BUCKET'
+binding = 'DOCUMENT_BUCKET'
 # note: this is required: ✘ [ERROR] In development, you should use a separate r2 bucket than the one you'd use in production. Please create a new r2 bucket with "wrangler r2 bucket create <name>" and add its name as preview_bucket_name to the r2_buckets "RESUME_BUCKET" in your wrangler.toml
-preview_bucket_name = 'resume-test'
-bucket_name = 'resume'
+preview_bucket_name = 'documents-test'
+bucket_name = 'documents'
 
 [[d1_databases]]
 binding = 'DB'
-database_name = 'resume-requester'
-database_id = '0ac76e36-e167-4ceb-b105-053f125325d8'
+database_name = 'document-requester'
+database_id = '62d70739-9adb-4891-b314-49404a734129'
 # note: this is required: ✘ [ERROR] In development, you should use a separate D1 database than the one you'd use in production. Please create a new D1 database with "wrangler d1 create <name>" and add its id as preview_database_id to the d1_database "DB" in your wrangler.toml
-preview_database_id = '3228b5ba-ce04-41f5-8066-e3a26b6b2929'
+preview_database_id = '408d9d9c-abeb-4c6c-98e0-21c9d5f22b0d'
 
 [triggers]
 # https://crontab.guru/#0_17_*_*_*
