@@ -1,5 +1,5 @@
 {
-  "name": "resume-requester",
+  "name": "document-requester",
   "version": "0.0.0",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20221111.1",
