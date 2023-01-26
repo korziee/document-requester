@@ -7,6 +7,6 @@ create table document_requests (
   email text not null,
   requester_name text not null,
   status text not null check(status in ('REQUESTED', 'REJECTED', 'ACCEPTED')),
-  created_at int not null default now,
-  updated_at int not null default now
+  created_at int not null default current_timestamp,
+  updated_at int not null default current_timestamp
 );
