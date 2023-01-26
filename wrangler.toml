@@ -18,3 +18,6 @@ preview_database_id = '408d9d9c-abeb-4c6c-98e0-21c9d5f22b0d'
 [triggers]
 # https://crontab.guru/#0_17_*_*_*
 crons = ["0 17 * * *"]
+
+[vars]
+WORKER_URL='https://document-requester.kory.workers.dev'

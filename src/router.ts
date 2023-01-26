@@ -1,16 +1,8 @@
-import { Router } from "itty-router";
+import { IRequest, Router } from "itty-router";
+import { v4 as uuidv4 } from "uuid";
 import { Env } from ".";
 
-// console.log(env.NTFY_TOPIC);
-// const resp = await fetch(`https://ntfy.sh/${env.NTFY_TOPIC}`, {
-//   method: "POST",
-//   body: "Test message!",
-//   headers: {
-//     Title: "Unauthorized access detected",
-//     Priority: "urgent",
-//     Tags: "warning,skull",
-//   },
-// });
+const SUPPORTED_DOCUMENTS: string[] = ["resume"];
 
 // console.log("Bucket contents", await env.RESUME_BUCKET.list());
 // const blob = await env.RESUME_BUCKET.get("labels.pdf");
@@ -24,31 +16,113 @@ import { Env } from ".";
 
 export const router = Router();
 
-router.get("/", async () => {
+router.get("/", async (req, env: Env) => {
+  console.log(env);
   // health-check
   return new Response(`ok - ${new Date().toISOString()}`);
 });
 
 router.put(
   "/request/:documentId",
-  async (req, env: Env, ctx: ExecutionContext) => {
-    // TODO
-    // Validation
-    //  email exists and is email
-    //  name exists and is > 1 char
-    //  document-id is one we support (resume)
-    // Logic
-    //  if email has already requested document and is status=REQUESTED, return 202.
-    //  create row in document_requests table
-    //  fire off message to ntfy topic
-    //  return 202
-    return new Response("ok");
+  withJsonContent,
+  async (req: IRequest, env: Env, ctx: ExecutionContext) => {
+    const { email, name } = req.content as { email?: string; name?: string };
+    const { documentId } = req.params;
+
+    if (!email) {
+      return new Response('"email" is required', { status: 400 });
+    }
+    if (!name || name.length <= 1) {
+      return new Response(
+        '"name" is required and must be of a length greater than 1',
+        { status: 400 }
+      );
+    }
+    if (!SUPPORTED_DOCUMENTS.includes(documentId)) {
+      return new Response(`"${documentId}" is not a supported document`, {
+        status: 400,
+      });
+    }
+
+    const exists = await env.DB.prepare(
+      "select id from document_requests where email = ? and document_id = ? and status = 'REQUESTED'"
+    )
+      .bind(email, documentId)
+      .first<{ id: string }>();
+
+    if (exists) {
+      console.log(
+        `request for "${documentId}" for user with email: "${email}" already exists in the requested state, stopping`
+      );
+      return new Response("ok", {
+        status: 202,
+      });
+    }
+
+    const insert = await env.DB.prepare(
+      "insert into document_requests(id, document_id, email, requester_name, status) values (?, ?, ?, ?, 'REQUESTED') returning id"
+    )
+      .bind(uuidv4(), documentId, email, name)
+      .all<{ id: string }>();
+
+    if (!insert.results || !insert.success) {
+      console.error("Unable to insert request", {
+        insert: JSON.stringify(insert, null, 2),
+        email,
+        name,
+        documentId,
+      });
+
+      return new Response("unable to insert request", { status: 500 });
+    }
+
+    const requestId = insert.results[0].id;
+
+    console.log(
+      `created document request for "${email}" into d1 with id: ${requestId}"`
+    );
+
+    const resp = await fetch(`https://ntfy.sh/`, {
+      method: "POST",
+      body: JSON.stringify({
+        topic: env.NTFY_TOPIC,
+        message: `${name}(${email}) has requested access to "${documentId}"`,
+        priority: 3, // default
+        tags: ["page_facing_up"],
+        actions: [
+          {
+            action: "http",
+            label: "Accept",
+            url: `${env.WORKER_URL}/accept/${requestId}`,
+          },
+          {
+            action: "http",
+            label: "Reject",
+            url: `${env.WORKER_URL}/reject/${requestId}`,
+          },
+        ],
+      }),
+    });
+
+    if (resp.status !== 200) {
+      console.error("there was an error publishing to ntfy", {
+        status: resp.status,
+        body: JSON.stringify(await resp.json(), null, 2),
+        email,
+        name,
+        documentId,
+        requestId,
+      });
+    }
+
+    return new Response("ok", { status: 202 });
   }
 );
 
 router.put(
   "/accept/:requestId",
   async (req, env: Env, ctx: ExecutionContext) => {
+    console.log("accepted", req.params);
     // TODO
     // Validation
     //  request id exists
@@ -68,6 +142,7 @@ router.put(
 router.put(
   "/reject/:requestId",
   async (req, env: Env, ctx: ExecutionContext) => {
+    console.log("rejected", req.params);
     // TODO
     // Validation
     //  request id exists
@@ -84,3 +159,14 @@ router.put(
 
 // .all is default handler, so 404 for everything else
 router.all("*", () => new Response("Not Found.", { status: 404 }));
+
+async function withJsonContent(request: IRequest) {
+  request.content = {};
+  let contentType = request.headers.get("content-type");
+
+  try {
+    if (contentType && contentType.includes("application/json")) {
+      request.content = await request.json();
+    }
+  } catch (err) {}
+}

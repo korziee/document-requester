@@ -6,6 +6,7 @@ export interface Env {
   DOCUMENT_BUCKET: R2Bucket;
   DB: D1Database;
   NTFY_TOPIC: string;
+  WORKER_URL: string;
 }
 
 export default {
