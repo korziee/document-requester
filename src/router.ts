@@ -208,6 +208,7 @@ router.put(
           update,
         }
       );
+      return new Response("update not successful", { status: 500 });
     }
 
     // return new Response(document!.body);
@@ -218,17 +219,73 @@ router.put(
 router.put(
   "/reject/:requestId",
   async (req, env: Env, ctx: ExecutionContext) => {
-    console.log("rejected", req.params);
+    const { requestId } = req.params;
+
+    if (!validate(requestId)) {
+      return new Response(`"${requestId}" was expected to be a uuid`, {
+        status: 400,
+      });
+    }
+
+    const res = await env.DB.prepare(
+      `select id, status, document_id from document_requests where id = ?`
+    )
+      .bind(requestId)
+      .first<{
+        id: string;
+        status: "REQUESTED" | "REJECTED" | "ACCEPTED";
+        document_id: string;
+      }>();
+
+    if (!res) {
+      return new Response(`invalid requestId provided: "${requestId}"`, {
+        status: 404,
+      });
+    }
+
+    if (res.status === "REJECTED") {
+      return new Response("ok", { status: 202 });
+    }
+
+    if (res.status === "ACCEPTED") {
+      return new Response(
+        `"${requestId}" has already been accepted, can't reject now`,
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (res.status !== "REQUESTED") {
+      console.error("unexpected status", {
+        status: res.status,
+        documentRequestId: res.id,
+      });
+      return new Response("something went wrong", { status: 500 });
+    }
+
     // TODO
-    // Validation
-    //  request id exists
-    //  if request status is accepted, return 400.
     // Logic
-    //  if request status is already rejected, return 202.
-    //  if request status is requested
     //    send rejection email to sendgrid
     //      using request id as idempotency key
-    //    update request to be rejected
+
+    const update = await env.DB.prepare(
+      "update document_requests set status = 'REJECTED' where id = ?"
+    )
+      .bind(requestId)
+      .run();
+
+    if (!update.success) {
+      console.error(
+        "update was not successful, manual intervention required as rejection email has already been sent",
+        {
+          requestId,
+          update,
+        }
+      );
+      return new Response("update not successful", { status: 500 });
+    }
+
     return new Response("ok");
   }
 );
