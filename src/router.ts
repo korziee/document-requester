@@ -1,23 +1,17 @@
 import { IRequest, Router } from "itty-router";
-import { v4 as uuidv4 } from "uuid";
+import { validate as validateEmail } from "email-validator";
+import { v4 as uuidv4, validate } from "uuid";
 import { Env } from ".";
 
 const SUPPORTED_DOCUMENTS: string[] = ["resume"];
 
-// console.log("Bucket contents", await env.RESUME_BUCKET.list());
-// const blob = await env.RESUME_BUCKET.get("labels.pdf");
-// console.log("labels.pdf", await env.RESUME_BUCKET.get("labels.pdf"));
-// return new Response(blob!.body);
-
-// console.log(await env.DB.prepare("PRAGMA table_list").all());
-// const prep = env.DB.prepare("SELECT * FROM Customers");
-// const all = await prep.all();
-// console.log("all", all);
+const DOCUMENT_FILE_NAMES: Record<string, string> = {
+  resume: "resume.pdf",
+};
 
 export const router = Router();
 
 router.get("/", async (req, env: Env) => {
-  console.log(env);
   // health-check
   return new Response(`ok - ${new Date().toISOString()}`);
 });
@@ -31,6 +25,9 @@ router.put(
 
     if (!email) {
       return new Response('"email" is required', { status: 400 });
+    }
+    if (!validateEmail(email)) {
+      return new Response('"email" is invalid', { status: 400 });
     }
     if (!name || name.length <= 1) {
       return new Response(
@@ -93,11 +90,15 @@ router.put(
           {
             action: "http",
             label: "Accept",
+            method: "PUT", // endpoint expects put!
+            clear: true, // removes notification from ntfy app after successful action, note: this doesn't work in iOS 🤦‍♂️
             url: `${env.WORKER_URL}/accept/${requestId}`,
           },
           {
             action: "http",
             label: "Reject",
+            method: "PUT", // endpoint expects put!
+            clear: true, // removes notification from ntfy app after successful action, note: this doesn't work in iOS 🤦‍♂️
             url: `${env.WORKER_URL}/reject/${requestId}`,
           },
         ],
@@ -121,21 +122,96 @@ router.put(
 
 router.put(
   "/accept/:requestId",
-  async (req, env: Env, ctx: ExecutionContext) => {
-    console.log("accepted", req.params);
+  async (req: IRequest, env: Env, ctx: ExecutionContext) => {
+    const { requestId } = req.params;
+
+    if (!validate(requestId)) {
+      return new Response(`"${requestId}" was expected to be a uuid`, {
+        status: 400,
+      });
+    }
+
+    const res = await env.DB.prepare(
+      `select id, status, document_id from document_requests where id = ?`
+    )
+      .bind(requestId)
+      .first<{
+        id: string;
+        status: "REQUESTED" | "REJECTED" | "ACCEPTED";
+        document_id: string;
+      }>();
+
+    if (!res) {
+      return new Response(`invalid requestId provided: "${requestId}"`, {
+        status: 404,
+      });
+    }
+
+    if (res.status === "REJECTED") {
+      return new Response(`"${requestId}" has already been rejected`, {
+        status: 400,
+      });
+    }
+
+    if (res.status === "ACCEPTED") {
+      return new Response("ok", { status: 202 });
+    }
+
+    if (res.status !== "REQUESTED") {
+      console.error("unexpected status", {
+        status: res.status,
+        documentRequestId: res.id,
+      });
+      return new Response("something went wrong", { status: 500 });
+    }
+
+    const fileName = DOCUMENT_FILE_NAMES[res.document_id];
+
+    if (!fileName) {
+      console.error("could not find mapping file name for document id", {
+        documentId: res.document_id,
+        documentRequestId: res.id,
+      });
+      return new Response("something went wrong", { status: 500 });
+    }
+
+    const document = await env.DOCUMENT_BUCKET.get(
+      DOCUMENT_FILE_NAMES[res.document_id]
+    );
+
+    if (!document) {
+      console.error("the document could not be found", {
+        documentId: res.document_id,
+        documentRequestId: res.id,
+        fileName,
+      });
+      return new Response("something went wrong", { status: 500 });
+    }
+
     // TODO
-    // Validation
-    //  request id exists
-    //  if request status is rejected, return 400.
     // Logic
-    //  if request status is already accepted, return 202.
-    //  if request status is requested
-    //    pull down document from r2
     //    send success email to sendgrid
     //      using request id as idempotency key
     //      attaching document as a stream
-    //    update request to be accepted
-    return new Response("ok");
+
+    const update = await env.DB.prepare(
+      "update document_requests set status = 'ACCEPTED' where id = ?"
+    )
+      .bind(requestId)
+      .run();
+
+    if (!update.success) {
+      console.error(
+        "update was not successful, manual intervention required as email has already been sent",
+        {
+          requestId,
+          update,
+        }
+      );
+    }
+
+    // return new Response(document!.body);
+    return new Response("ok", { status: 202 });
   }
 );
 
