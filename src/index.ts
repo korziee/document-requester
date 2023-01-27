@@ -7,6 +7,7 @@ export interface Env {
   DB: D1Database;
   NTFY_TOPIC: string;
   WORKER_URL: string;
+  SENDGRID_API_KEY: string;
 }
 
 export default {

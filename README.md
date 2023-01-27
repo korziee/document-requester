@@ -16,7 +16,8 @@ A tool built on Cloudflare's free tier that adds an approval step before someone
 - [ ] Put actual resume in bucket
 - [x] Implement requesting
 - [x] Implement accepting
-- [ ] Implement rejecting
+- [x] Implement rejecting
+- [ ] scheduling
 
 ## Notes
 

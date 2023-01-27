@@ -1,3 +1,4 @@
+import sendgrid from "@sendgrid/mail";
 import { IRequest, Router } from "itty-router";
 import { validate as validateEmail } from "email-validator";
 import { v4 as uuidv4, validate } from "uuid";
@@ -5,8 +6,14 @@ import { Env } from ".";
 
 const SUPPORTED_DOCUMENTS: string[] = ["resume"];
 
-const DOCUMENT_FILE_NAMES: Record<string, string> = {
-  resume: "resume.pdf",
+const DOCUMENT_CONFIG: Record<
+  string,
+  { r2Key: string; sendgridTemplateId: string }
+> = {
+  resume: {
+    r2Key: "koryporter-resume.pdf",
+    sendgridTemplateId: "d-1b5cd82e87f54ed2b5773def8871e884",
+  },
 };
 
 export const router = Router();
@@ -131,68 +138,98 @@ router.put(
       });
     }
 
-    const res = await env.DB.prepare(
-      `select id, status, document_id from document_requests where id = ?`
+    const documentRequest = await env.DB.prepare(
+      `select id, status, document_id, email, requester_name from document_requests where id = ?`
     )
       .bind(requestId)
       .first<{
         id: string;
         status: "REQUESTED" | "REJECTED" | "ACCEPTED";
+        email: string;
+        requester_name: string;
         document_id: string;
       }>();
 
-    if (!res) {
+    if (!documentRequest) {
       return new Response(`invalid requestId provided: "${requestId}"`, {
         status: 404,
       });
     }
 
-    if (res.status === "REJECTED") {
+    if (documentRequest.status === "REJECTED") {
       return new Response(`"${requestId}" has already been rejected`, {
         status: 400,
       });
     }
 
-    if (res.status === "ACCEPTED") {
+    if (documentRequest.status === "ACCEPTED") {
       return new Response("ok", { status: 202 });
     }
 
-    if (res.status !== "REQUESTED") {
+    if (documentRequest.status !== "REQUESTED") {
       console.error("unexpected status", {
-        status: res.status,
-        documentRequestId: res.id,
+        status: documentRequest.status,
+        documentRequestId: documentRequest.id,
       });
       return new Response("something went wrong", { status: 500 });
     }
 
-    const fileName = DOCUMENT_FILE_NAMES[res.document_id];
+    const { r2Key, sendgridTemplateId } =
+      DOCUMENT_CONFIG[documentRequest.document_id];
 
-    if (!fileName) {
+    if (!r2Key) {
       console.error("could not find mapping file name for document id", {
-        documentId: res.document_id,
-        documentRequestId: res.id,
+        documentId: documentRequest.document_id,
+        documentRequestId: documentRequest.id,
       });
       return new Response("something went wrong", { status: 500 });
     }
 
-    const document = await env.DOCUMENT_BUCKET.get(
-      DOCUMENT_FILE_NAMES[res.document_id]
-    );
+    if (!sendgridTemplateId) {
+      console.error("could not find sendgrid template id for document id", {
+        documentId: documentRequest.document_id,
+        documentRequestId: documentRequest.id,
+      });
+      return new Response("something went wrong", { status: 500 });
+    }
+
+    const document = await env.DOCUMENT_BUCKET.get(r2Key);
 
     if (!document) {
       console.error("the document could not be found", {
-        documentId: res.document_id,
-        documentRequestId: res.id,
-        fileName,
+        documentId: documentRequest.document_id,
+        documentRequestId: documentRequest.id,
+        r2Key,
       });
       return new Response("something went wrong", { status: 500 });
     }
 
-    // TODO
+    const buf = await document.arrayBuffer();
+
+    sendgrid.setApiKey(env.SENDGRID_API_KEY);
+    const emailResponse = await sendgrid.send({
+      to: documentRequest.email,
+      from: "kory@kory.au",
+      templateId: sendgridTemplateId,
+      attachments: [
+        {
+          filename: r2Key,
+          disposition: "attachment",
+          type: "application/pdf",
+          content: Buffer.from(buf).toString("base64"),
+        },
+      ],
+      dynamicTemplateData: {
+        name: documentRequest.requester_name,
+      },
+    });
+
+    // TODO (test the next logic)
     // Logic
     //    send success email to sendgrid
     //      using request id as idempotency key
     //      attaching document as a stream
+    console.log("res", emailResponse);
 
     const update = await env.DB.prepare(
       "update document_requests set status = 'ACCEPTED' where id = ?"
@@ -211,7 +248,6 @@ router.put(
       return new Response("update not successful", { status: 500 });
     }
 
-    // return new Response(document!.body);
     return new Response("ok", { status: 202 });
   }
 );
