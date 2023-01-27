@@ -5,7 +5,6 @@ import { v4 as uuidv4, validate } from "uuid";
 import { Env } from ".";
 
 const SUPPORTED_DOCUMENTS: string[] = ["resume"];
-
 const DOCUMENT_CONFIG: Record<
   string,
   { r2Key: string; sendgridTemplateId: string }
@@ -18,7 +17,7 @@ const DOCUMENT_CONFIG: Record<
 
 export const router = Router();
 
-router.get("/", async (req, env: Env) => {
+router.get("/", async () => {
   // health-check
   return new Response(`ok - ${new Date().toISOString()}`);
 });
@@ -26,7 +25,7 @@ router.get("/", async (req, env: Env) => {
 router.put(
   "/request/:documentId",
   withJsonContent,
-  async (req: IRequest, env: Env, ctx: ExecutionContext) => {
+  async (req: IRequest, env: Env) => {
     const { email, name } = req.content as { email?: string; name?: string };
     const { documentId } = req.params;
 
@@ -127,204 +126,215 @@ router.put(
   }
 );
 
-router.put(
-  "/accept/:requestId",
-  async (req: IRequest, env: Env, ctx: ExecutionContext) => {
-    const { requestId } = req.params;
+router.put("/accept/:requestId", async (req: IRequest, env: Env) => {
+  const { requestId } = req.params;
 
-    if (!validate(requestId)) {
-      return new Response(`"${requestId}" was expected to be a uuid`, {
-        status: 400,
-      });
-    }
-
-    const documentRequest = await env.DB.prepare(
-      `select id, status, document_id, email, requester_name from document_requests where id = ?`
-    )
-      .bind(requestId)
-      .first<{
-        id: string;
-        status: "REQUESTED" | "REJECTED" | "ACCEPTED";
-        email: string;
-        requester_name: string;
-        document_id: string;
-      }>();
-
-    if (!documentRequest) {
-      return new Response(`invalid requestId provided: "${requestId}"`, {
-        status: 404,
-      });
-    }
-
-    if (documentRequest.status === "REJECTED") {
-      return new Response(`"${requestId}" has already been rejected`, {
-        status: 400,
-      });
-    }
-
-    if (documentRequest.status === "ACCEPTED") {
-      return new Response("ok", { status: 202 });
-    }
-
-    if (documentRequest.status !== "REQUESTED") {
-      console.error("unexpected status", {
-        status: documentRequest.status,
-        documentRequestId: documentRequest.id,
-      });
-      return new Response("something went wrong", { status: 500 });
-    }
-
-    const { r2Key, sendgridTemplateId } =
-      DOCUMENT_CONFIG[documentRequest.document_id];
-
-    if (!r2Key) {
-      console.error("could not find mapping file name for document id", {
-        documentId: documentRequest.document_id,
-        documentRequestId: documentRequest.id,
-      });
-      return new Response("something went wrong", { status: 500 });
-    }
-
-    if (!sendgridTemplateId) {
-      console.error("could not find sendgrid template id for document id", {
-        documentId: documentRequest.document_id,
-        documentRequestId: documentRequest.id,
-      });
-      return new Response("something went wrong", { status: 500 });
-    }
-
-    const document = await env.DOCUMENT_BUCKET.get(r2Key);
-
-    if (!document) {
-      console.error("the document could not be found", {
-        documentId: documentRequest.document_id,
-        documentRequestId: documentRequest.id,
-        r2Key,
-      });
-      return new Response("something went wrong", { status: 500 });
-    }
-
-    const buf = await document.arrayBuffer();
-
-    sendgrid.setApiKey(env.SENDGRID_API_KEY);
-    const emailResponse = await sendgrid.send({
-      to: documentRequest.email,
-      from: "kory@kory.au",
-      templateId: sendgridTemplateId,
-      attachments: [
-        {
-          filename: r2Key,
-          disposition: "attachment",
-          type: "application/pdf",
-          content: Buffer.from(buf).toString("base64"),
-        },
-      ],
-      dynamicTemplateData: {
-        name: documentRequest.requester_name,
-      },
+  if (!validate(requestId)) {
+    return new Response(`"${requestId}" was expected to be a uuid`, {
+      status: 400,
     });
+  }
 
-    // TODO (test the next logic)
-    // Logic
-    //    send success email to sendgrid
-    //      using request id as idempotency key
-    //      attaching document as a stream
-    console.log("res", emailResponse);
+  const documentRequest = await env.DB.prepare(
+    `select id, status, document_id, email, requester_name from document_requests where id = ?`
+  )
+    .bind(requestId)
+    .first<{
+      id: string;
+      status: "REQUESTED" | "REJECTED" | "ACCEPTED";
+      email: string;
+      requester_name: string;
+      document_id: string;
+    }>();
 
-    const update = await env.DB.prepare(
-      "update document_requests set status = 'ACCEPTED' where id = ?"
-    )
-      .bind(requestId)
-      .run();
+  if (!documentRequest) {
+    return new Response(`invalid requestId provided: "${requestId}"`, {
+      status: 404,
+    });
+  }
 
-    if (!update.success) {
-      console.error(
-        "update was not successful, manual intervention required as email has already been sent",
-        {
-          requestId,
-          update,
-        }
-      );
-      return new Response("update not successful", { status: 500 });
-    }
+  if (documentRequest.status === "REJECTED") {
+    return new Response(`"${requestId}" has already been rejected`, {
+      status: 400,
+    });
+  }
 
+  if (documentRequest.status === "ACCEPTED") {
     return new Response("ok", { status: 202 });
   }
-);
 
-router.put(
-  "/reject/:requestId",
-  async (req, env: Env, ctx: ExecutionContext) => {
-    const { requestId } = req.params;
-
-    if (!validate(requestId)) {
-      return new Response(`"${requestId}" was expected to be a uuid`, {
-        status: 400,
-      });
-    }
-
-    const res = await env.DB.prepare(
-      `select id, status, document_id from document_requests where id = ?`
-    )
-      .bind(requestId)
-      .first<{
-        id: string;
-        status: "REQUESTED" | "REJECTED" | "ACCEPTED";
-        document_id: string;
-      }>();
-
-    if (!res) {
-      return new Response(`invalid requestId provided: "${requestId}"`, {
-        status: 404,
-      });
-    }
-
-    if (res.status === "REJECTED") {
-      return new Response("ok", { status: 202 });
-    }
-
-    if (res.status === "ACCEPTED") {
-      return new Response(
-        `"${requestId}" has already been accepted, can't reject now`,
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (res.status !== "REQUESTED") {
-      console.error("unexpected status", {
-        status: res.status,
-        documentRequestId: res.id,
-      });
-      return new Response("something went wrong", { status: 500 });
-    }
-
-    // TODO
-    // Logic
-    //    send rejection email to sendgrid
-    //      using request id as idempotency key
-
-    const update = await env.DB.prepare(
-      "update document_requests set status = 'REJECTED' where id = ?"
-    )
-      .bind(requestId)
-      .run();
-
-    if (!update.success) {
-      console.error(
-        "update was not successful, manual intervention required as rejection email has already been sent",
-        {
-          requestId,
-          update,
-        }
-      );
-      return new Response("update not successful", { status: 500 });
-    }
-
-    return new Response("ok");
+  if (documentRequest.status !== "REQUESTED") {
+    console.error("unexpected status", {
+      status: documentRequest.status,
+      documentRequestId: documentRequest.id,
+    });
+    return new Response("something went wrong", { status: 500 });
   }
-);
+
+  const { r2Key, sendgridTemplateId } =
+    DOCUMENT_CONFIG[documentRequest.document_id];
+
+  if (!r2Key) {
+    console.error("could not find mapping file name for document id", {
+      documentId: documentRequest.document_id,
+      documentRequestId: documentRequest.id,
+    });
+    return new Response("something went wrong", { status: 500 });
+  }
+
+  if (!sendgridTemplateId) {
+    console.error("could not find sendgrid template id for document id", {
+      documentId: documentRequest.document_id,
+      documentRequestId: documentRequest.id,
+    });
+    return new Response("something went wrong", { status: 500 });
+  }
+
+  const document = await env.DOCUMENT_BUCKET.get(r2Key);
+
+  if (!document) {
+    console.error("the document could not be found", {
+      documentId: documentRequest.document_id,
+      documentRequestId: documentRequest.id,
+      r2Key,
+    });
+    return new Response("something went wrong", { status: 500 });
+  }
+
+  const buf = await document.arrayBuffer();
+
+  sendgrid.setApiKey(env.SENDGRID_API_KEY);
+  const emailResponse = await sendgrid.send({
+    to: documentRequest.email,
+    from: "kory@kory.au",
+    templateId: sendgridTemplateId,
+    attachments: [
+      {
+        filename: r2Key,
+        disposition: "attachment",
+        type: "application/pdf",
+        content: Buffer.from(buf).toString("base64"),
+      },
+    ],
+    dynamicTemplateData: {
+      name: documentRequest.requester_name,
+    },
+  });
+
+  // TODO (test the next logic)
+  // Logic
+  //    send success email to sendgrid
+  //      using request id as idempotency key
+  //      attaching document as a stream
+  console.log("res", emailResponse);
+
+  const update = await env.DB.prepare(
+    "update document_requests set status = 'ACCEPTED' where id = ?"
+  )
+    .bind(requestId)
+    .run();
+
+  if (!update.success) {
+    console.error(
+      "update was not successful, manual intervention required as email has already been sent",
+      {
+        requestId,
+        update,
+      }
+    );
+    return new Response("update not successful", { status: 500 });
+  }
+
+  return new Response("ok", { status: 202 });
+});
+
+router.put("/reject/:requestId", async (req, env: Env) => {
+  const { requestId } = req.params;
+
+  if (!validate(requestId)) {
+    return new Response(`"${requestId}" was expected to be a uuid`, {
+      status: 400,
+    });
+  }
+
+  const documentRequest = await env.DB.prepare(
+    `select id, status, document_id, email, name from document_requests where id = ?`
+  )
+    .bind(requestId)
+    .first<{
+      id: string;
+      status: "REQUESTED" | "REJECTED" | "ACCEPTED";
+      document_id: string;
+      email: string;
+      name: string;
+    }>();
+
+  if (!documentRequest) {
+    return new Response(`invalid requestId provided: "${requestId}"`, {
+      status: 404,
+    });
+  }
+
+  if (documentRequest.status === "REJECTED") {
+    return new Response("ok", { status: 202 });
+  }
+
+  if (documentRequest.status === "ACCEPTED") {
+    return new Response(
+      `"${requestId}" has already been accepted, can't reject now`,
+      {
+        status: 400,
+      }
+    );
+  }
+
+  if (documentRequest.status !== "REQUESTED") {
+    console.error("unexpected status", {
+      status: documentRequest.status,
+      documentRequestId: documentRequest.id,
+    });
+    return new Response("something went wrong", { status: 500 });
+  }
+
+  // TODO (test)
+  // Logic
+  //    send rejection email to sendgrid
+  //      using request id as idempotency key
+
+  sendgrid.setApiKey(env.SENDGRID_API_KEY);
+  const emailResponse = await sendgrid.send({
+    to: documentRequest.email,
+    from: "kory@kory.au",
+    content: [
+      {
+        type: "text/html",
+        value: `<p>Hey sorry ${documentRequest.name}, I'm unable to release this document to you. Feel free to respond to this email if you think theres been a mistake.</p>`,
+      },
+    ],
+    subject: "Document was not released",
+  });
+
+  console.log("emailResponse", emailResponse);
+
+  const update = await env.DB.prepare(
+    "update document_requests set status = 'REJECTED' where id = ?"
+  )
+    .bind(requestId)
+    .run();
+
+  if (!update.success) {
+    console.error(
+      "update was not successful, manual intervention required as rejection email has already been sent",
+      {
+        requestId,
+        update,
+      }
+    );
+    return new Response("update not successful", { status: 500 });
+  }
+
+  return new Response("ok");
+});
 
 // .all is default handler, so 404 for everything else
 router.all("*", () => new Response("Not Found.", { status: 404 }));

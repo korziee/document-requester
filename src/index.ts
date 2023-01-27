@@ -1,8 +1,6 @@
 import { router } from "./router";
 
 export interface Env {
-  // Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
-  // MY_KV_NAMESPACE: KVNamespace;
   DOCUMENT_BUCKET: R2Bucket;
   DB: D1Database;
   NTFY_TOPIC: string;
