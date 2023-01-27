@@ -11,13 +11,13 @@ A tool built on Cloudflare's free tier that adds an approval step before someone
 - [x] Use itty router
 - [x] D1 Schema
 - [x] Comments
-- [ ] fix sendgrid
+- [x] fix sendgrid
 - [x] validate email
-- [ ] Put actual resume in bucket
 - [x] Implement requesting
 - [x] Implement accepting
 - [x] Implement rejecting
-- [ ] scheduling
+- [ ] Put actual resume in bucket
+- [ ] test sendgrid
 
 ## Notes
 

@@ -9,14 +9,12 @@ export interface Env {
 }
 
 export default {
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-    // TODO
-    // find all unacked older than 24 hours
-    //  for each message
-    //    publish message to ntfy
-    console.log("hey outside!", event.cron, event.scheduledTime, ctx);
-    await new Promise((r) => setTimeout(r, 10000));
-  },
+  // TODO
+  // find all unacked older than 24 hours
+  //  for each message
+  //    publish message to ntfy
+  // async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+  // },
 
   async fetch(
     request: Request,
