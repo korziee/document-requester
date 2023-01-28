@@ -21,6 +21,10 @@ A tool built on Cloudflare's free tier that adds an approval step before someone
 
 ## Notes
 
+### Sendgrid
+
+Couldn't use their NPM package directly as it has references to fs internally.
+
 ### Cron Testing
 
 Cannot test cron schedule locally because the d1 middleware in mini-flare is incompatible: https://github.com/cloudflare/miniflare/issues/479. Solution is to just comment out the d1 config in wrangler for now.

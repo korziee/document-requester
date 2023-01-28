@@ -1,4 +1,4 @@
-import sendgrid from "@sendgrid/mail";
+// import sendgrid from "@sendgrid/mail";
 import { IRequest, Router } from "itty-router";
 import { validate as validateEmail } from "email-validator";
 import { v4 as uuidv4, validate } from "uuid";
@@ -7,10 +7,11 @@ import { Env } from ".";
 const SUPPORTED_DOCUMENTS: string[] = ["resume"];
 const DOCUMENT_CONFIG: Record<
   string,
-  { r2Key: string; sendgridTemplateId: string }
+  { r2Key: string; sendgridTemplateId: string; contentType: string }
 > = {
   resume: {
     r2Key: "koryporter-resume.pdf",
+    contentType: "application/pdf",
     sendgridTemplateId: "d-1b5cd82e87f54ed2b5773def8871e884",
   },
 };
@@ -171,24 +172,15 @@ router.put("/accept/:requestId", async (req: IRequest, env: Env) => {
     return new Response("something went wrong", { status: 500 });
   }
 
-  const { r2Key, sendgridTemplateId } =
+  if (!DOCUMENT_CONFIG[documentRequest.document_id]) {
+    console.error("could not find mapping config for document id", {
+      documentId: documentRequest.document_id,
+      documentRequestId: documentRequest.id,
+    });
+  }
+
+  const { r2Key, sendgridTemplateId, contentType } =
     DOCUMENT_CONFIG[documentRequest.document_id];
-
-  if (!r2Key) {
-    console.error("could not find mapping file name for document id", {
-      documentId: documentRequest.document_id,
-      documentRequestId: documentRequest.id,
-    });
-    return new Response("something went wrong", { status: 500 });
-  }
-
-  if (!sendgridTemplateId) {
-    console.error("could not find sendgrid template id for document id", {
-      documentId: documentRequest.document_id,
-      documentRequestId: documentRequest.id,
-    });
-    return new Response("something went wrong", { status: 500 });
-  }
 
   const document = await env.DOCUMENT_BUCKET.get(r2Key);
 
@@ -201,32 +193,48 @@ router.put("/accept/:requestId", async (req: IRequest, env: Env) => {
     return new Response("something went wrong", { status: 500 });
   }
 
+  // converts an array buffer to base64.
+  // can't use "Buffer" in Cloudflare Workers.
   const buf = await document.arrayBuffer();
-
-  sendgrid.setApiKey(env.SENDGRID_API_KEY);
-  const emailResponse = await sendgrid.send({
-    to: documentRequest.email,
-    from: "kory@kory.au",
-    templateId: sendgridTemplateId,
-    attachments: [
-      {
-        filename: r2Key,
-        disposition: "attachment",
-        type: "application/pdf",
-        content: Buffer.from(buf).toString("base64"),
-      },
-    ],
-    dynamicTemplateData: {
-      name: documentRequest.requester_name,
-    },
+  let binaryString = "";
+  new Uint8Array(buf).forEach((byte) => {
+    binaryString += String.fromCharCode(byte);
   });
 
-  // TODO (test the next logic)
-  // Logic
-  //    send success email to sendgrid
-  //      using request id as idempotency key
-  //      attaching document as a stream
-  console.log("res", emailResponse);
+  const email = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    body: JSON.stringify({
+      from: {
+        email: "kory@kory.au",
+        name: "Kory Porter",
+      },
+      personalizations: [
+        {
+          to: [
+            {
+              email: documentRequest.email,
+            },
+          ],
+          dynamic_template_data: {
+            name: documentRequest.requester_name,
+          },
+        },
+      ],
+      template_id: sendgridTemplateId,
+      attachments: [
+        {
+          content: btoa(binaryString),
+          filename: r2Key,
+          type: contentType,
+          disposition: "attachment",
+        },
+      ],
+    }),
+    headers: {
+      Authorization: `Bearer ${env.SENDGRID_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
 
   const update = await env.DB.prepare(
     "update document_requests set status = 'ACCEPTED' where id = ?"
@@ -301,20 +309,20 @@ router.put("/reject/:requestId", async (req, env: Env) => {
   //    send rejection email to sendgrid
   //      using request id as idempotency key
 
-  sendgrid.setApiKey(env.SENDGRID_API_KEY);
-  const emailResponse = await sendgrid.send({
-    to: documentRequest.email,
-    from: "kory@kory.au",
-    content: [
-      {
-        type: "text/html",
-        value: `<p>Hey sorry ${documentRequest.name}, I'm unable to release this document to you. Feel free to respond to this email if you think theres been a mistake.</p>`,
-      },
-    ],
-    subject: "Document was not released",
-  });
+  // sendgrid.setApiKey(env.SENDGRID_API_KEY);
+  // const emailResponse = await sendgrid.send({
+  //   to: documentRequest.email,
+  //   from: "kory@kory.au",
+  //   content: [
+  //     {
+  //       type: "text/html",
+  //       value: `<p>Hey sorry ${documentRequest.name}, I'm unable to release this document to you. Feel free to respond to this email if you think theres been a mistake.</p>`,
+  //     },
+  //   ],
+  //   subject: "Document was not released",
+  // });
 
-  console.log("emailResponse", emailResponse);
+  // console.log("emailResponse", emailResponse);
 
   const update = await env.DB.prepare(
     "update document_requests set status = 'REJECTED' where id = ?"
