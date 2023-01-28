@@ -17,9 +17,13 @@ A tool built on Cloudflare's free tier that adds an approval step before someone
 - [x] Implement accepting
 - [x] Implement rejecting
 - [ ] Put actual resume in bucket
-- [ ] test sendgrid
+- [x] test sendgrid
 
 ## Notes
+
+### Viewing logs in prod
+
+`yarn wrangler tail` gives you a live stream of logs.
 
 ### Sendgrid
 

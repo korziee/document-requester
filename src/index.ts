@@ -1,21 +1,20 @@
-import { router } from "./router";
+import { IRequest, Router } from "itty-router";
+import { request } from "./request";
+import { accept } from "./accept";
+import { reject } from "./reject";
 
-export interface Env {
-  DOCUMENT_BUCKET: R2Bucket;
-  DB: D1Database;
-  NTFY_TOPIC: string;
-  WORKER_URL: string;
-  SENDGRID_API_KEY: string;
-}
+export const router = Router();
+
+// health-check
+router.get("/", () => new Response(`ok - ${new Date().toISOString()}`));
+router.put("/request/:documentId", withJsonContent, request);
+router.put("/accept/:requestId", accept);
+router.put("/reject/:requestId", reject);
+
+// .all is default handler, so 404 for everything else
+router.all("*", () => new Response("Not Found.", { status: 404 }));
 
 export default {
-  // TODO
-  // find all unacked older than 24 hours
-  //  for each message
-  //    publish message to ntfy
-  // async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-  // },
-
   async fetch(
     request: Request,
     env: Env,
@@ -25,3 +24,25 @@ export default {
     return router.handle(request, env, ctx);
   },
 };
+
+export interface Env {
+  DOCUMENT_BUCKET: R2Bucket;
+  DB: D1Database;
+  NTFY_TOPIC: string;
+  WORKER_URL: string;
+  SENDGRID_API_KEY: string;
+}
+
+/**
+ * Appends json body to request.content if it exists
+ */
+async function withJsonContent(request: IRequest) {
+  request.content = {};
+  let contentType = request.headers.get("content-type");
+
+  try {
+    if (contentType && contentType.includes("application/json")) {
+      request.content = await request.json();
+    }
+  } catch (err) {}
+}
