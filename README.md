@@ -2,23 +2,31 @@
 
 A tool built on Cloudflare's free tier that adds an approval step before someone can access a document
 
+## Demo
+
+insert video here
+
 ## TODO
 
-- [x] R2 Integration
-- [x] D1 Integration
-- [x] CRON Integration
-- [x] NTFY Integration
-- [x] Use itty router
-- [x] D1 Schema
-- [x] Comments
-- [x] fix sendgrid
-- [x] validate email
-- [x] Implement requesting
-- [x] Implement accepting
-- [x] Implement rejecting
-- [ ] Put actual resume in bucket
-- [x] test sendgrid
-- [x] rate limiting
+<details>
+  <summary>Click to expand</summary>
+  
+  - [x] R2 Integration
+  - [x] D1 Integration
+  - [x] CRON Integration
+  - [x] NTFY Integration
+  - [x] Use itty router
+  - [x] D1 Schema
+  - [x] Comments
+  - [x] fix sendgrid
+  - [x] validate email
+  - [x] Implement requesting
+  - [x] Implement accepting
+  - [x] Implement rejecting
+  - [x] Put actual resume in bucket
+  - [x] test sendgrid
+  - [x] rate limiting
+</details>
 
 ## Notes
 
