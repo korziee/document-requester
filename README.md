@@ -26,6 +26,7 @@ insert video here
   - [x] Put actual resume in bucket
   - [x] test sendgrid
   - [x] rate limiting
+  - [x] cron job to poll documents bucket and write into d1 as a base64 encoded binary string (need to do this because of 10ms limit)
 </details>
 
 ## Notes
@@ -42,6 +43,7 @@ Couldn't use their NPM package directly as it has references to fs internally.
 
 Cannot test cron schedule locally because the d1 middleware in mini-flare is incompatible: https://github.com/cloudflare/miniflare/issues/479. Solution is to just comment out the d1 config in wrangler for now.
 Can be tested with `yarn wrangler dev --test-scheduled --persist --experimental-local`
+Note: obviously no good if you require d1 in your cron...
 
 ### D1 migrations for preview
 

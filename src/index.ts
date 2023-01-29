@@ -5,6 +5,7 @@ import { request } from "./request";
 import { accept } from "./accept";
 import { reject } from "./reject";
 import { rateLimiter } from "./rate-limiter";
+import { sync } from "./r2-sync";
 
 const { preflight, corsify } = createCors({
   origins: [
@@ -18,17 +19,38 @@ const { preflight, corsify } = createCors({
 export const router = Router();
 
 router.all("*", preflight as any);
-
-// health-check
 router.get("/", () => new Response(`ok - ${new Date().toISOString()}`));
 router.put("/request/:documentId", withJsonContent, request);
 router.put("/accept/:requestId", accept);
 router.put("/reject/:requestId", reject);
+router.get("/sync", async (_req, env: Env) => {
+  const headers = _req.headers as Headers;
+  const auth = headers.get("Authorization");
+
+  if (auth !== env.FORCE_SYNC_KEY) {
+    return new Response("bad auth", { status: 401 });
+  }
+
+  const syncResult = await sync(env);
+  return new Response(JSON.stringify({ syncResult }), {
+    headers: {
+      "content-type": "application/json",
+    },
+    status: syncResult.find((a) => a.status === "rejected") ? 500 : 200,
+  });
+});
 
 // .all is default handler, so 404 for everything else
 router.all("*", () => new Response("Not Found.", { status: 404 }));
 
 export default {
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    async function exec() {
+      await sync(env);
+    }
+    ctx.waitUntil(exec());
+  },
+
   async fetch(
     request: Request,
     env: Env,
@@ -63,6 +85,7 @@ export interface Env {
   NTFY_TOPIC: string;
   WORKER_URL: string;
   SENDGRID_API_KEY: string;
+  FORCE_SYNC_KEY: string;
 }
 
 /**

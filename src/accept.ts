@@ -58,24 +58,33 @@ export async function accept(req: IRequest, env: Env) {
   const { r2Key, sendgridTemplateId, contentType } =
     DOCUMENT_CONFIG[documentRequest.document_id];
 
-  const document = await env.DOCUMENT_BUCKET.get(r2Key);
+  // see src/r2-sync.ts for the why I'm hitting D1 instead of R2 here.
+  const doc = await env.DB.prepare(
+    "select id, version, updated_at, contents_base64 from documents where id = ?"
+  )
+    .bind(r2Key)
+    .first<{
+      id: string;
+      version: string;
+      updated_at: string;
+      contents_base64: string;
+    }>();
 
-  if (!document) {
-    console.error("the document could not be found", {
-      documentId: documentRequest.document_id,
-      documentRequestId: documentRequest.id,
-      r2Key,
-    });
+  if (!doc.contents_base64) {
+    console.error(
+      "the document could not be found inside of r2, has it been synced correctly?",
+      {
+        documentId: documentRequest.document_id,
+        documentRequestId: documentRequest.id,
+        r2Key,
+      }
+    );
     return new Response("something went wrong", { status: 500 });
   }
 
-  // converts an array buffer to base64.
-  // can't use "Buffer" in Cloudflare Workers.
-  const buf = await document.arrayBuffer();
-  let binaryString = "";
-  new Uint8Array(buf).forEach((byte) => {
-    binaryString += String.fromCharCode(byte);
-  });
+  console.log(
+    `attempting to send document with key: "${r2Key}" which was last updated at: "${doc.updated_at}", having version: "${doc.version}".`
+  );
 
   const email = await fetch("https://api.sendgrid.com/v3/mail/send", {
     body: JSON.stringify({
@@ -98,7 +107,7 @@ export async function accept(req: IRequest, env: Env) {
       template_id: sendgridTemplateId,
       attachments: [
         {
-          content: btoa(binaryString),
+          content: doc.contents_base64,
           filename: r2Key,
           type: contentType,
           disposition: "attachment",
