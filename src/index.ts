@@ -4,6 +4,7 @@ import { createCors } from "itty-cors";
 import { request } from "./request";
 import { accept } from "./accept";
 import { reject } from "./reject";
+import { rateLimiter } from "./rate-limiter";
 
 const { preflight, corsify } = createCors({
   origins: [
@@ -33,6 +34,17 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ): Promise<Response> {
+    try {
+      await rateLimiter(request, env);
+    } catch (e) {
+      console.error(e);
+      if (e instanceof Error) {
+        return new Response("Rate limit has been hit, stop it", {
+          status: 429,
+        });
+      }
+    }
+
     // note: this order should not change, route handlers are typed to expect env and ctx in this order
     return router
       .handle(request, env, ctx)
@@ -47,6 +59,7 @@ export default {
 export interface Env {
   DOCUMENT_BUCKET: R2Bucket;
   DB: D1Database;
+  KV: KVNamespace;
   NTFY_TOPIC: string;
   WORKER_URL: string;
   SENDGRID_API_KEY: string;

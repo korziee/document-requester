@@ -15,10 +15,10 @@ database_id = '62d70739-9adb-4891-b314-49404a734129'
 # note: this is required: ✘ [ERROR] In development, you should use a separate D1 database than the one you'd use in production. Please create a new D1 database with "wrangler d1 create <name>" and add its id as preview_database_id to the d1_database "DB" in your wrangler.toml
 preview_database_id = '408d9d9c-abeb-4c6c-98e0-21c9d5f22b0d'
 
-
-[triggers]
-# https://crontab.guru/#0_17_*_*_*
-crons = ["0 17 * * *"]
+[[kv_namespaces]]
+binding = "KV"
+id = "8fe97a40dc83464baff3486261c55230"
+preview_id = "0a66447489d14c11a7205ad0e3c26a3d"
 
 [vars]
 WORKER_URL='https://document-requester.kory.workers.dev'
