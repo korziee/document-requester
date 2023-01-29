@@ -1,9 +1,22 @@
 import { IRequest, Router } from "itty-router";
+import { createCors } from "itty-cors";
+
 import { request } from "./request";
 import { accept } from "./accept";
 import { reject } from "./reject";
 
+const { preflight, corsify } = createCors({
+  origins: [
+    "https://koryporter.com",
+    "https://test.koryporter.com",
+    "http://localhost:3000",
+  ],
+  methods: ["GET", "PUT", "OPTIONS"],
+});
+
 export const router = Router();
+
+router.all("*", preflight as any);
 
 // health-check
 router.get("/", () => new Response(`ok - ${new Date().toISOString()}`));
@@ -21,7 +34,13 @@ export default {
     ctx: ExecutionContext
   ): Promise<Response> {
     // note: this order should not change, route handlers are typed to expect env and ctx in this order
-    return router.handle(request, env, ctx);
+    return router
+      .handle(request, env, ctx)
+      .catch((err) => {
+        console.error(err);
+        return new Response("An unknown error occurred", { status: 500 });
+      })
+      .then(corsify);
   },
 };
 

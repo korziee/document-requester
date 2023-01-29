@@ -18,6 +18,7 @@ A tool built on Cloudflare's free tier that adds an approval step before someone
 - [x] Implement rejecting
 - [ ] Put actual resume in bucket
 - [x] test sendgrid
+- [ ] rate limiting
 
 ## Notes
 

@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "email-validator": "^2.0.4",
+    "itty-cors": "^0.3.5",
     "itty-router": "^3.0.11",
     "uuid": "^9.0.0"
   }

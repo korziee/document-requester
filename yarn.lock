@@ -858,6 +858,11 @@ isexe@^2.0.0:
   resolved "https://registry.yarnpkg.com/isexe/-/isexe-2.0.0.tgz#e8fbf374dc556ff8947a10dcb0572d633f2cfa10"
   integrity sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==
 
+itty-cors@^0.3.5:
+  version "0.3.5"
+  resolved "https://registry.yarnpkg.com/itty-cors/-/itty-cors-0.3.5.tgz#2b10b9e032e5ff66772a0f73b20ac0fed9d5d87f"
+  integrity sha512-EG7AUAXWg1rvgGef4QDp/OZfR9uV+2naD1iSkBmgR8eRYfm9CnTdbh69xvroWDIfNG/dw5rjhAH1rglKMJC3og==
+
 itty-router@^3.0.11:
   version "3.0.11"
   resolved "https://registry.yarnpkg.com/itty-router/-/itty-router-3.0.11.tgz#256c2ef0a12721a839656f49db640d40ed2fb308"
