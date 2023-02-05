@@ -9,8 +9,8 @@ export async function rateLimiter(req: Request, env: Env) {
     throw new Error("something went wrong, couldn't find ip address!");
   }
 
-  const response = await env.KV.getWithMetadata(`limit:${ip}`);
-  const hits = response.value ? parseInt(response.value) : 0;
+  const response = await env.KV.get(`limit:${ip}`);
+  const hits = response ? parseInt(response) : 0;
 
   if (hits >= RATE_LIMIT) {
     throw new Error(`ip: "${ip}" is over the rate limit`);

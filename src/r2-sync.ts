@@ -4,17 +4,17 @@ import { Env } from ".";
  * Syncs content from R2 into D1. Why? Good question.
  *
  * Cloudflare Workers on the free tier give you a 10ms CPU time run time, if you go over
- * your request may be dropped. Now because sendgrid expect a base 64 encoded binary string
- * to be provided to them for any attachments, I was needing to read the file from r2,
+ * your request may be dropped. Sendgrid expects a base 64 encoded binary string
+ * to be provided to them for any attachments, so I was needing to read the file from r2,
  * convert to an array buffer, build a string of the contents of the buffer, and then
- * convert to a base 64 string, this was spiking CPU upto 50ms, which could be dropped.
+ * convert to a base 64 string, this was spiking CPU upto 50ms, which means the request could be dropped.
  * To get around this I instead occasionally sync the contents of the bucket into
  * D1. Should be able to get away with this for ages, D1 has a database limit of 100MB, no
  * row limits.
  *
  * The intent behind this project was for people to request my resume,
- * I don't want that to be flaky. I don't mind if the syncing is flaky, it runs on a 30 min cron schedule
- * so if it fails it'll clean itself up.
+ * I don't want that to be flaky. I don't mind if the syncing is flaky, it runs on a 15 min cron schedule
+ * so if it fails it'll clean itself up (and probably work the next time)
  */
 export async function sync(env: Env) {
   const r2List = await env.DOCUMENT_BUCKET.list();
